@@ -1,5 +1,4 @@
 import numpy as np
-import itertools
 import sys
 
 ## object helper functions

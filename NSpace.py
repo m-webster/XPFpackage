@@ -1,7 +1,4 @@
 import numpy as np
-import random as random
-import math as math
-# import queue
 from common import *
 
 #######################################
@@ -123,7 +120,7 @@ def Split(a,N,check=False):
     a = a % N
     if a == 0:
         return 1
-    r = math.ceil(np.log2(np.log2(N))) if N > 1 else 1
+    r = np.int(np.ceil(np.log2(np.log2(N)))) if N > 1 else 1
 # print('N,r',N,r)
     for i in range(r):
         a = a*a % N
@@ -132,7 +129,7 @@ def Split(a,N,check=False):
 def Factorize(a):
     f = []
     m = []
-    for x in range(2,math.ceil(a ** 0.5)+1):
+    for x in range(2,np.int(np.ceil(a ** 0.5)+1)):
         if a % x == 0:
             i = 0
             f.append(x)
@@ -144,7 +141,7 @@ def Factorize(a):
 
 # def Factors(a):
 #     f = set()
-#     for x in range(2,math.ceil(a ** 0.5)+1):
+#     for x in range(2,np.int(np.ceil(a ** 0.5)+1)):
 #         if a % x == 0:
 #             f.add(x)
 #             f.add(a //x)
@@ -159,7 +156,7 @@ def PrimeNumbers(a):
         isPrime = True
         xi = 2 * x + 1
         i = 0
-        maxi = math.ceil(xi ** 0.5)
+        maxi = np.int(np.ceil(xi ** 0.5))
         while isPrime and i < len(f):
             isPrime = xi % f[i] > 0
             i += 1
@@ -216,7 +213,7 @@ def Unit(a,N,check=False):
 
 def BinaryTest(f,N=False):
     if N is False:
-        N = random.randint(2,20)
+        N = np.random.randint(2,20)
     print('Testing',f,'N=',N)
     temp = [['a','c','Check']]    
     for a in range(N):
@@ -234,7 +231,7 @@ def BinaryTest(f,N=False):
         
 def UnaryTest(f,N=False):
     if N is False:
-        N = random.randint(2,20)
+        N = np.random.randint(2,20)
     print('Testing',f,'N=',N)
     temp = [['a','c','Check']]    
     for a in range(N):
@@ -251,7 +248,7 @@ def UnaryTest(f,N=False):
 
 def TestRingOps(N=False):
     if N is False:
-        N = random.randint(2,20)
+        N = np.random.randint(2,20)
     Binaries = [Quo,Div,Gcdex,Stab]
     for f in Binaries:
         BinaryTest(f,N)
