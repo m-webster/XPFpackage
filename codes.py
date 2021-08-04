@@ -271,16 +271,16 @@ class Code:
 
         #### Calculate x: Set representing leading indices of X-component
         li = leadingIndices(XPx(Sx))
-        report('li',li)
+        report('li',li,"\n")
 
         ## array of Z and phase components
         Szp = XP2Zp(Sz,N,double=False)
         report('Szp')
-        report(ZmatPrint(Szp,N))
+        report(ZmatPrint(Szp,N),"\n")
 
         ##### Testing
         if check is not False:
-            report('Checking Em')
+            # report('Checking Em')
             # report('Em',check)
             E = binSolveNaive(Szp,N,1,li)
             # report('solveNaive',E)
@@ -293,7 +293,7 @@ class Code:
         nsp.simplifyKer()
         K = RemoveZeroRows(nsp.K[:,:-1])
         report('K')
-        report(ZmatPrint(K,N))
+        report(ZmatPrint(K,N),"\n")
 
         ###### Calculate the solution graph D by calling espaceSolve
         # D is the graph
@@ -306,7 +306,7 @@ class Code:
         A = graph2List(D,(n,b),rev=True)
         A = ZMat(A)
         report('A')
-        report(ZmatPrint(A,N))
+        report(ZmatPrint(A,N),"\n")
 
         ###### Convert L to list of binary vectors B - these are the solutions
         Em = ZMat([np.mod(a @ K, N) for a in A])
@@ -326,7 +326,7 @@ class Code:
         EmStates = XPmergeComponents([p,Em,z])
         OSx,Sindex = OrbitOperator(Sx,N,n)
         report('OSx')
-        report(XP2Str(OSx,N))
+        report(XP2Str(OSx,N),"\n")
         C = [XPMul(OSx,m,N) for m in EmStates] 
         setVal(self,'Sindex',Sindex)
         return C
@@ -959,7 +959,7 @@ def cosetDecomposition(Em):
     ## get valid transitions
     Lx = getT(Em)
     report('T')
-    report(ZmatPrint(Lx,2))
+    report(ZmatPrint(Lx,2),"\n")
     ## get RREF of T
     if len(Lx) > 0:
         Xnsp = NSpace(Lx,2)
@@ -972,7 +972,7 @@ def cosetDecomposition(Em):
     else:
         Eq = Em
     report('Lx is RREF(T)')
-    report(ZmatPrint(Lx,2))
+    report(ZmatPrint(Lx,2),"\n")
     return Eq,Lx  
 
 def coreLE(Em,N):
