@@ -669,6 +669,7 @@ def State2Str(S,N,c=None,C=False):
     x = ZMat2str(x,2)
     ix = np.argsort(x)
     x, p,coeff = x[ix],p[ix],coeff[ix]
-    eStr = [f'{coeff[i]}w{p[i]}/{2*N}|{x[i]}>' for i in range(len(S))]
+    omega = ['' if p_i ==0 else f'w{p_i}/{2*N}' for p_i in p]
+    eStr =  [f'{coeff[i]}{omega[i]}|{x[i]}>' for i in range(len(S))]
     return "+".join(eStr) 
 

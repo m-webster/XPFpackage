@@ -614,7 +614,7 @@ class Code:
     ## codewords orbit distance t = log2(N) from Eq
     ## for calculating Logical Identities and Regular Generators
     def getCWI(self,N):
-        EqState, LXx, SXx = getVals(self,['Eq','EqState', 'LXx', 'SXx'])
+        EqState, LXx, SXx = getVals(self,['EqState', 'LXx', 'SXx'])
         ## we don't care about phases for CWI
         x = np.vstack([SXx,LXx])
         GX = makeXP(0,x,0)
