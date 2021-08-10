@@ -626,14 +626,20 @@ def affineIntercept(A1,o1,A2,o2,N,C=False):
     nsp = NSpace(np.vstack([A1,A2]),N)
     nsp.simplifyH()
     v = np.mod(o1-o2,N)
+    # report(func_name(),'nsp.H')
+    # report(ZmatPrint(nsp.H,N))
+    # report('v',v)
     b,u = matResidue(nsp.H,v,N)
+    # report('b,u',b,u)
     if not isZero(b):
         ## there is no solution o1-o2 = - v1@A1 + v2@A2 <=> o1 + v1@A1 = o2 + v2@A2
         return False
     ## residue of o1-o2 wrt A1 = v2@A2
     b,u = matResidue(A1,v,N)
+    # report('b,u',b,u)
     ## new offset is o2 + v2@A2
     o = np.mod(b + o2,N)
+    # report('o',o)
     return o
 
 ## intersection of multiple N spaces
@@ -732,6 +738,10 @@ class NSpace:
 
     def simplifyKer(self):
         self.getVal('K')
+        # report(func_name(),'H')
+        # report(ZmatPrint(self.H,self.N) )
+        # report(func_name(),'K')
+        # report(ZmatPrint(self.K,self.N) )
         # P,H,K = HowellRecursive(self.K,self.N)
         H,ops = HowellForm(self.K,self.N)
         self.K = RemoveZeroRows(H)
@@ -798,7 +808,7 @@ def matResidual(A,b,N,check=False):
             c = d if d else 0
         temp.append(c)
         b = np.mod(b - c * A[i],N)
-    a = ZMat2D(temp)
+    a = ZMat(temp)
     
     # print('a,a1',a,a1)
     # print('b,b1',b,b1)

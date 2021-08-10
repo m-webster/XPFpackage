@@ -24,16 +24,55 @@ def XPcomponents(A,n=None):
     A = ZMat(A)
     if n is None:
         n = XPn(A)
-    slices = [0,slice(1,n+1),slice(n+1,2*n+1)]
+    slices = [-1,slice(n),slice(n,2*n)]
     if np.ndim(A) > 1:
         ## multi-dimensional array
         return [A[:,si] for si in slices]
     ## 1-dimensional array
     return [A[si] for si in slices]
 
+# merge components strict
+# make an XP operator, dimensions of components must match
 def XPmergeComponents(C):
+    n = np.shape(C[1])[-1]
     C[0] = np.transpose([C[0]])
-    return np.hstack(C)
+    return ZMat(np.hstack([C[1],C[2],C[0]]),2*n+1)
+
+# merge components non-strict
+# tries to make an XP operator, even if dimensions of components vary
+def makeXP(p,x,z):
+    C = [p,x,z]
+    ## if p is a vector, turn it into a 2D column vector
+    if np.ndim(C[0]) == 1:
+        C[0] = colVector(C[0])
+    ## find max dimension of components
+    maxDim = np.amax([np.ndim(c) for c in C])
+    ## convert x,z into 2D arrays
+    C[1],C[2] = ZMat2D(C[1]),ZMat2D(C[2])
+    ## broadcast to same shape
+    C = [np.array(a) for a in np.broadcast_arrays(*C)]
+    ## get first column of p
+    C[0] = C[0][:,0]
+    C = XPmergeComponents(C)
+    ## If we were given 0D or 1D inputs, return single row
+    if maxDim < 2:
+        C = C[0]
+    return C
+
+## force list of XP operators A into 2D form
+## oneD records whether original arrays were both 1D
+def XP2D(A):
+    A1D = typeName(A) not in {'tuple','list'}
+    if A1D:
+        A = [A]
+    dims = [np.ndim(a) for a in A]
+    maxdim = np.amax(dims)
+    mindim = np.amin(dims)
+    oneD = maxdim == 1 and mindim == 1
+    A = [ZMat2D(a) for a in A]
+    if A1D:
+        A = A[0]
+    return A, oneD
 
 # def XPsetComponent(A,i,val,n=None):
 #     C = XPcomponents(A,n)
@@ -73,22 +112,25 @@ def XPSetNsingle(A,N,P):
         z = z//F
     return XPmergeComponents([p,x,z])
 
-
 def XPSetN(A,N,P):
-    if np.ndim(A) == 1:
-        return XPSetNsingle(A,N,P)
+    ## convert A to 2D
+    A,oneD = XP2D(A)
+    m = len(A)
+    ## convert N, P to 1D
+    N,P = ZMat1D(N,m),ZMat1D(P,m)
     temp = []
-    for i in range(len(A)):
-        res = XPSetNsingle(A[i],N,P[i])
+    for i in range(m):
+        res = XPSetNsingle(A[i],N[i],P[i])
         if res is False:
             return res
         temp.append(res)
+    if oneD:
+        temp = temp[0]
     return ZMat(temp)
 
 ## Return string representation of XP operator A with precision N
 def XP2Str(A,N):
-    if np.ndim(A) == 1:
-        A = ZMat([A])
+    A = ZMat2D(A)
     C = XPcomponents(A)
     C[0] = np.transpose([C[0]])
     cMod = [2*N,2,N]
@@ -133,42 +175,25 @@ def str2XP(mystr):
     mystr = "".join([s for s in mystr if s in punc or s.isnumeric()])
     ## split into lines each with an XP operator
     mystr = mystr.split(",")
-    p,x,z,P = [],[],[],[]
+    p,x,z,N = [],[],[],[]
     for s in mystr:
         s = s.strip()
         Ni,pi,xi,zi = [a.strip() for a in s.split("|")]
-        P.append(int(Ni))
+        N.append(int(Ni))
         p.append(int(pi))
         x.append(str2ZMat(xi))
         z.append(str2ZMat(zi))
     A = XPmergeComponents([p,x,z])
     if len(p) == 1:
-        A,N = A[0],P[0]
+        A,P = A[0],N[0]
     else:
-        N = np.lcm.reduce(P)
+        P = np.lcm.reduce(N)
         A = XPSetN(A,N,P)
-    return A,N
+    return A,P
 
 ## return identity XP operator on n qubits
 def XPI(n):
     return ZMatZeros(2*n+1)
-
-## sort list of XP operators 
-def XPSort(A):
-    if np.ndim(A) == 1:
-        return A
-    A = ZMat(A)
-    ix = np.argsort(ZMat2str(A))
-    ix = np.amax(ix) - ix
-    ## flip to create echelon form
-    return A[ix,:]
-
-## check if two sets of XP operators A and B are equal
-def XPEqual(A,B):
-    if np.shape(A) != np.shape(B):
-        return False
-    As,Bs = sorted(ZMat2str(A)), sorted(ZMat2str(B))
-    return As == Bs
 
 ## check if XP operator A is diagonal
 def XPisDiag(A):
@@ -207,9 +232,11 @@ def XPMul(A,B,N,C=False):
     if C is not False:
         check = XPTestBinary(A,B,N,C,XPMulTest)
         return np.all(check)
+    [A,B],oneD = XP2D([A,B])
     z1 = XPz(A)
     x2 = XPx(B)
-    return XPRound(A+B+XPD(2*x2*z1),N)
+    C = XPRound(A+B+XPD(2*x2*z1),N)
+    return C[0] if oneD else C
 
 ## test function for XPPower
 def XPPowerTest(A,N,d,C):
@@ -242,7 +269,7 @@ def XPInverse(A,N,C=False):
 ## square of XP operator
 def XPSquare(A,N,C=False):
     if C is not False:
-        check = XPEqual(XPMul(A,A,N),C)
+        check = ZMatEqual(XPMul(A,A,N),C)
         return np.all(check)
     p,x,z = XPcomponents(A)
     return XPRound(2*A+XPD(2*x*z),N)
@@ -252,26 +279,48 @@ def XPCommutator(A,B,N,C=False):
     if C is not False:
         AB = XPMul(A,B,N)
         AinvBinv = XPMul(XPInverse(A,N),XPInverse(B,N),N)
-        check= XPEqual(C,XPMul(AB,AinvBinv,N))
+        check= ZMatEqual(C,XPMul(AB,AinvBinv,N))
         return np.all(check)
+    [A,B],oneD = XP2D([A,B])
     p1,x1,z1 = XPcomponents(A)
     p2,x2,z2 = XPcomponents(B)
     z = x1*z2-x2*z1+2*x1*x2*(z1-z2)
-    return XPRound(XPD(2*z),N)
+    C= XPRound(XPD(2*z),N)
+    return C[0] if oneD else C
 
 def XPConjugate(A,B,N,C=False):
     if C is not False:
-        check = XPEqual(C,XPMul(XPMul(A,B,N),XPInverse(A,N),N))
+        check = ZMatEqual(C,XPMul(XPMul(A,B,N),XPInverse(A,N),N))
         return np.all(check)
+    [A,B],oneD = XP2D([A,B])
     p1,x1,z1 = XPcomponents(A)
     p2,x2,z2 = XPcomponents(B)
     z=x1*z2+x2*z1-2*x1*x2*z1
-    return XPRound(B+XPD(2*z),N)
+    C= XPRound(B+XPD(2*z),N)
+    return C[0] if oneD else C
+
+def CW2Dict(CW):
+    CWphases = dict()
+    for i in range(len(CW)):
+        p0,x0,z0 = XPcomponents(CW[i])
+        for j in range(len(x0)):
+            CWphases[tuple(x0[j])] = p0[j]
+    return CWphases
 
 ## apply XP operator A to S and return change in phase component
 def Fvector(A,S,N):
+    # report('S')
+    # report(State2Str(S,N))
+    phaseDict = CW2Dict([S])
+    # report(func_name(),'phaseDict')
+    # report(phaseDict)
     F = XPMul(A,S,N)
-    return np.mod(XPp(F)-XPp(S),2*N)
+    Fx = XPx(F)
+    p0 = ZMat([phaseDict[tuple(x)] for x in Fx])
+    p1 = XPp(F)
+    # report('p0',p0)
+    # report('p1',p1)
+    return np.mod(p1-p0,2*N)
 
 ## distance of XP operator A - ie count of qubits where either z or x component is nonzero
 def XPdistance(A):
@@ -493,18 +542,15 @@ def StateRandom(N,n,m=1):
     p = np.random.randint(2*N,size=m)
     ## coefficients are in range [0,N//2] as we require cos(pi*c/N) to be positive
     c = np.random.randint(N//2,size=m)
-    z= ZMatZeros(np.shape(x))
-    S = XPmergeComponents([p,x,z])
+    S = makeXP(p,x,0)
     return S,c
 
 ## Product state (|0> + w^q|1>)^n
 def StatePlus(N,n,q=0):
-    p = ZMatZeros(1 << n)
     x = ZMat(list(itertools.product([0,1],repeat=n)))
-    z = ZMatZeros((1<<n,n))
-    S = XPmergeComponents([p,x,z])
+    S = makeXP(0,x,0)
     if q != 0:
-        A = XPmergeComponents([0,ZMatZeros(n),ZMat([q//2]*n)])
+        A = makeXP(0,0,ZMat([q//2]*n))
         S = XPMul(A,S,N)
     return S
 
@@ -561,7 +607,7 @@ def StateAdd(S1,S2,N,C=False):
     ## convert x from int to array of 0/1
     x = int2ZMat(x,2,n=XPn(S1))
     ## merge components back into state format
-    S = XPmergeComponents([p,x,ZMatZeros(np.shape(x))])
+    S = makeXP(p,x,0)
     return S,c
      
 
@@ -572,8 +618,7 @@ def State2C(S,N,c=None,C=False):
         S1,c1 = C2state(C,N)
         C1 = State2C(S1,N,c1)
         return np.isclose(C, C1).all()
-    if np.ndim(S) == 1:
-        S = ZMat([S])
+    S = ZMat2D(S)
     ## there are 2**n basis vector, so need a tuple with this number of elements
     temp = np.zeros(1 << XPn(S),dtype=complex)
     p,x,z = XPcomponents(S)
@@ -597,31 +642,24 @@ def C2state(val,N,C=False):
     x = int2ZMat(ix,2,n)
     p = C2phase(val[ix],N)
     c = C2Cos(val[ix],N)
-    S = XPmergeComponents([p,x,ZMatZeros(np.shape(x))])
+    S = makeXP(p,x,0)
     return S,c
 
 def stateAmplitude(S,N,c=None,C=False):
-    if np.ndim(S) == 1:
-        S = ZMat([S])
+    S = ZMat2D(S)
     if c is None:
         c = ZMatZeros(len(S))
     return np.sum(np.cos(c*np.pi/N)**2)
 
-def StateEqual(s1,s2):
-    return State2Dict(s1) == State2Dict(s2)
+def StateSort(s):
+    p,x,z = XPcomponents(s)
+    ZMatSort(makeXP(p,x,0)) 
 
-def StateDiff(s,D,P):
-    pList,eList = s
-    temp = []
-    for i in range(len(pList)):
-        ix = tuple(eList[i])
-        delta = D[ix] if ix in D else 0
-        temp.append(delta-pList[i])
-    return np.mod(ZMat(temp),P)
+def StateEqual(s1,s2):
+    return np.array_equal(StateSort(s1), StateSort(s2))
 
 def State2Str(S,N,c=None,C=False):
-    if np.ndim(S) == 1:
-        S = ZMat([S])
+    S = ZMat2D(S)
     if c is None:
         coeff = [""] * len(S)
     else:
@@ -634,42 +672,3 @@ def State2Str(S,N,c=None,C=False):
     eStr = [f'{coeff[i]}w{p[i]}/{2*N}|{x[i]}>' for i in range(len(S))]
     return "+".join(eStr) 
 
-## Given a basis of XP operators, return the operator residual and vector
-def XPResidual(basis,op,N,i=None):   
-    if len(basis) == 0:
-        return op, []  
-    if i is None:
-        if XPisDiag(op):
-            return XPResidual(basis,op,N,1)
-        op, ix1 = XPResidual(basis,op,N,0)  
-        op, ix2 = XPResidual(basis,op,N,1)  
-        return op, [ix1[i] + ix2[i] for i in range(len(ix1))]
-    # report('op',op)
-    # report('i',i)
-
-    A = [g[i+1] for g in basis]
-    n = len(basis[0][1])
-    nZero = np.zeros(n,dtype=int) 
-    if i == 1:
-        for j in range(len(basis)):
-            if not XPisDiag(basis[j]):
-                A[j] = nZero
-    # report('A',A)
-    b = op[i+1].copy()
-    P = 2 if i==0 else N
-
-    ## get the matrix residual for the operator
-    x,ix = ns.matResidual(A,b,P)
-    # x,ix = ns.matResidue(A,b,P)
-    # report('b,x',b,x)
-
-    ## ix is the pattern of operators in basis which needs to be applied
-    ix = ns.mat2list(ix)
-    # report('ix',ix)
-    g = GeneratorProduct(basis,ix,N)
-    # report('g',g)
-    # report('XPInverse(g,N)',XPInverse(g,N))
-    # report('op',op)
-    r = XPMul(op,XPInverse(g,N),N)
-    # report('r',r)
-    return r,ix
