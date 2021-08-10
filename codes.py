@@ -425,16 +425,19 @@ def getLI(SX,nsp,N,n):
     return np.vstack([MX,MZ]) 
 
 ## Calculate Logical Operators generators L in canonical form
-## Assuming we have already calculated LX
-def getLO(LX,nsp,N,n):
+
+def getLZ(MZz,nsp,N,n):
     z,F = nsp.K[:,:n],nsp.K[:,n:]
     report(func_name(), nsp.K)
-    LZ = makeXP(0,0,z)
-    LX = simplifyXZ(LX,LZ,N)
     ## remove non-trivial diagonal operators
-    LZ = ZMat([LZ[i] for i in range(len(LZ)) if not(isConstant(F[i]))],2*n+1)
-    return np.vstack([LX,LZ]) 
-
+    LZz = []
+    for zi in z:
+        zi,u = matResidual(MZz,zi,N)
+        if not isZero(zi):
+            LZz.append(zi)
+    nsp = NSpace(LZz,N)
+    nsp.simplifyH()
+    return makeXP(0,0,ZMat(nsp.H,n))
 
 ## Calculate non-diagonal logical operators from Codewords
 def CW2LX(CW,LXx,nsp,N):
@@ -649,7 +652,7 @@ class Code:
     def getLO(self):
         report(func_name())
         N = self.N
-        LI,Em,Eq,LXx = getVals(self,['LI','Em','Eq','LXx'])
+        M,Em,Eq,LXx = getVals(self,['LI','Em','Eq','LXx'])
         CWL = self.getCWL(N)
         report('CWL')
         for c in CWL:
@@ -659,7 +662,10 @@ class Code:
         # report('LXx',LXx)
         LX = CW2LX(CWL,LXx,nsp,N)
         report('LX',np.shape(LX))
-        return getLO(LX,nsp,N,self.n)
+        MX,MZ = splitDiag(M)
+        MZz = XPz(MZ)
+        LZ = getLZ(MZz,nsp,N,self.n)
+        return np.vstack([LX,LZ])
 
     def Fvector(self,A):
         EmState = getVal(self,'EmState')
