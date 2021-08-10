@@ -553,7 +553,10 @@ class Code:
         self.N = N
         self.n = XPn(G)
         self.G = ZMat2D(G) 
-    
+        getVal(self,'S')
+        getVal(self,'Em')
+        getVal(self,'Eq')
+
     ## S is the canonical generators
     def getS(self):
         S = CanonicalGenerators(self.G,self.N)
@@ -611,8 +614,7 @@ class Code:
     ## codewords orbit distance t = log2(N) from Eq
     ## for calculating Logical Identities and Regular Generators
     def getCWI(self,N):
-        EqState, LXx, SXx = getVals(self,['EqState', 'LXx', 'SXx'])
-        
+        EqState, LXx, SXx = getVals(self,['Eq','EqState', 'LXx', 'SXx'])
         ## we don't care about phases for CWI
         x = np.vstack([SXx,LXx])
         GX = makeXP(0,x,0)
@@ -639,7 +641,7 @@ class Code:
 
     def getLI(self):
         N = self.N
-        SX = getVal(self,'SX')
+        S,SX = getVals(self,['S','SX'])
         CWI = self.getCWI(N)
         nsp = getNsp(CWI,N)
         return getLI(SX,nsp,N,self.n)
@@ -647,7 +649,7 @@ class Code:
     def getLO(self):
         report(func_name())
         N = self.N
-        Em,Eq,LXx = getVals(self,['Em','Eq','LXx'])
+        LI,Em,Eq,LXx = getVals(self,['LI','Em','Eq','LXx'])
         CWL = self.getCWL(N)
         report('CWL')
         for c in CWL:
