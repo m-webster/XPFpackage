@@ -113,6 +113,7 @@ def XPSetNsingle(A,N,P):
     return XPmergeComponents([p,x,z])
 
 def XPSetN(A,N,P):
+    n = XPn(A)
     ## convert A to 2D
     A,oneD = XP2D(A)
     m = len(A)
@@ -126,7 +127,7 @@ def XPSetN(A,N,P):
         temp.append(res)
     if oneD:
         temp = temp[0]
-    return ZMat(temp)
+    return ZMat(temp,2*n +1)
 
 ## Return string representation of XP operator A with precision N
 def XP2Str(A,N):
@@ -443,12 +444,6 @@ def C2phase(a,N,C=False):
     angleValid = np.isclose(np.abs(p-pRound), 0)
     return np.where(np.logical_and(lengthValid,angleValid),np.mod(pRound,2*N),None)
 
-# ## convert single qubit X(p) to matrix representation
-# def XMat(x,N):
-#     ## for arbitrary x phases only
-#     p = phase2C(x,2*N)
-#     return 0.5 * intMat([[1+p,1-p],[1-p,1+p]])
-
 ## convert single qubit Z(p) to matrix representation
 def PMat(z,N):
     ## P^z is diag(1,w^2z)
@@ -468,11 +463,14 @@ def XPProj(A,S,N,C=False):
         S = ZMat([S])
     if C is not False:
         S1,c = C
+        # print(func_name(),'S1,c ',S1,c  )
+        # print(func_name(),'S1',State2Str(S1,2*N,c))
         S1 = State2C(S1,2*N,c)
         S2 = State2C(S,N)
         S3 = matProjector(A,N) @ S2
-        # S4,c4 = C2state(S3,2*N)
-        # print(State2Str(S4,2*N,c4))
+        # print('S3',S3)
+        S4,c4 = C2state(S3,2*N)
+        # print('S4',State2Str(S4,2*N,c4))
         return np.isclose(S1,S3).all()
     if XPisDiag(A):
         AS = XPMul(A,S,N)
@@ -480,11 +478,11 @@ def XPProj(A,S,N,C=False):
         dp = np.mod(XPp(AS) - XPp(S),2*N)
         # print(func_name(),'dp',dp,dp==0)
         ## return only elements |e> of S where A|e> = |e>
-        return S[dp == 0,:]
+        return S[dp == 0,:],None
     ## filter S by elements where A^2|e> = |e>
     A2 = XPSquare(A,N)
     # print(func_name(),'A2',XP2Str(A2,N))
-    S1 = XPProj(A2,S,N)
+    S1,c = XPProj(A2,S,N)
     # print(func_name(),'S1',S1)
     S2 = XPMul(A,S1,N)
     # print(func_name(),'A',A)
@@ -492,28 +490,6 @@ def XPProj(A,S,N,C=False):
     return StateAdd(S1,S2,N)
 
 ## complex version of projector of XP operator A
-def matProjectors(A,N,C=False):
-    I = np.eye(1 << XPn(A),dtype=complex)
-    if C is not False:
-        B = np.sum(list(C.values()),axis=0)
-        return np.all(np.isclose(B,I))
-    evals = XPEigenvalues(A,N)
-    vList = [Phase2C(p,N) for p in evals]
-    Amat = XP2Mat(A,N)
-    temp = dict()
-    d = len(vList)
-    ## calculate projectors using Schwinger equation
-    for i in range(d):
-        vi = vList[i]
-        B = I
-        for j in range(d):
-            if i != j:
-                vj = vList[j]
-                B = (B @ (vj*I - Amat))/(vj - vi)
-        if not np.all(np.isclose(B,0)):
-            temp[evals[i]] = B
-    return temp
-
 ## return +1 projector 
 def matProjector(A,N):
     I = np.eye(1 << XPn(A),dtype=complex)
@@ -541,8 +517,8 @@ def StateRandom(N,n,m=1):
     ## phase can be in range [0,2N]
     p = np.random.randint(2*N,size=m)
     ## coefficients are in range [0,N//2] as we require cos(pi*c/N) to be positive
-    c = np.random.randint(N//2,size=m)
-    S = makeXP(p,x,0)
+    c = np.random.randint(-1,N//2,size=m)
+    S = XPmergeComponents([p,x,ZMatZeros(np.shape(x))])
     return S,c
 
 ## Product state (|0> + w^q|1>)^n
@@ -586,10 +562,21 @@ def StateAdd(S1,S2,N,C=False):
         # print('S1+S2',(State2C(S1,N)+State2C(S2,N)))
         # print('S3',State2C(S3,2*N,c))
         return np.isclose((State2C(S1,N)+State2C(S2,N))/2,State2C(S3,2*N,c)).all()
+    S1,S2 = ZMat2D(S1), ZMat2D(S2)
+    ## check if we have empty states
+    S = None
+    if len(S1) == 0:
+        S = S2
+    if len(S2) == 0:
+        S = S1
+    if S is not None:
+        ## double precision
+        S = XPSetN(S,N,2*N)
+        return S,[-1]*len(S)
     ## make state dictionaries
     D1,D2 = State2Dict(S1),State2Dict(S2)
     ## make sets of the dictionaries
-    SD1,SD2 = set(D1),set(D2)
+    SD1,SD2 = set(D1.keys()),set(D2.keys())
     ## A - where x is in both S1 and S2
     A = ZMat([[D1[x],D2[x],x] for x in SD1.intersection(SD2)],3)
     ## Add the phases in A to find p, c
@@ -607,7 +594,8 @@ def StateAdd(S1,S2,N,C=False):
     ## convert x from int to array of 0/1
     x = int2ZMat(x,2,n=XPn(S1))
     ## merge components back into state format
-    S = makeXP(p,x,0)
+    z = ZMatZeros(np.shape(x))
+    S = XPmergeComponents([p,x,z])
     return S,c
      
 
@@ -619,8 +607,13 @@ def State2C(S,N,c=None,C=False):
         C1 = State2C(S1,N,c1)
         return np.isclose(C, C1).all()
     S = ZMat2D(S)
+    # print(func_name(),'S',np.shape(S))
+    # if c is not None:
+    #     print(func_name(),'c',np.shape(c))
     ## there are 2**n basis vector, so need a tuple with this number of elements
     temp = np.zeros(1 << XPn(S),dtype=complex)
+    if len(S) == 0:
+        return temp
     p,x,z = XPcomponents(S)
     x= ZMat2int(x,2)
     c = 1 if c is None else Cos2C(c,N) 
@@ -639,27 +632,40 @@ def C2state(val,N,C=False):
     ## exclude abs values outside err from vmax
     err = 1e-6
     ix = [i for i in range(len(val)) if vabs[i] > err]
+    if len(ix) == 0:
+        return ZMat([],2*n+1),None
     x = int2ZMat(ix,2,n)
     p = C2phase(val[ix],N)
     c = C2Cos(val[ix],N)
-    S = makeXP(p,x,0)
+    z = ZMatZeros(np.shape(x))
+    S = XPmergeComponents([p,x,z])
     return S,c
 
 def stateAmplitude(S,N,c=None,C=False):
+    if C is not False:
+        phi = State2C(S,N,c)
+        A = np.sum(phi * np.conj(phi))
+        return np.isclose(A,C)
     S = ZMat2D(S)
     if c is None:
-        c = ZMatZeros(len(S))
-    return np.sum(np.cos(c*np.pi/N)**2)
+        ## in this case, it's a state of form \sum_i w^p_i|e_i>
+        ## amplitude is the size of the Z-support
+        return len(S) 
+    ## otherwise, there is a scaling factor which needs to be taken into account
+    return np.sum(Cos2C(c,N)**2)
 
 def StateSort(s):
     p,x,z = XPcomponents(s)
-    ZMatSort(makeXP(p,x,0)) 
+    z = ZMatZeros(np.shape(x))
+    return ZMatSort(XPmergeComponents([p,x,z])) 
 
 def StateEqual(s1,s2):
     return np.array_equal(StateSort(s1), StateSort(s2))
 
 def State2Str(S,N,c=None,C=False):
     S = ZMat2D(S)
+    if len(S) == 0:
+        return ""
     if c is None:
         coeff = [""] * len(S)
     else:

@@ -60,8 +60,6 @@ print(XP2Str(res,N))
 print(XPCommutator(A,B,N,res))
 
 
-
-
 ## 0D,0D,0D
 C = [1,2,3]
 ## 0D,0D,1D

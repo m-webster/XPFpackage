@@ -2,7 +2,7 @@ import numpy as np
 import NSpace as ns
 import itertools
 from common import *
-from codes import *
+from XPCodes import *
 
 def W(n,m):
     ix = [s for s in itertools.combinations(range(n),m)]

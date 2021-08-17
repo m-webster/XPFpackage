@@ -71,8 +71,11 @@ def str2ZMat(mystr):
 def int2ZMat(A,N=2,n=None):
     ## return an array representation of integer x
     ## x has n bits in base N
+    ## need to cover situation where array is empty
     if n is None:
         n = logCeil(np.amax(A),N)
+    if np.size(A) == 0:
+        return ZMat(emptyadj(A,1),n)
     d = np.ndim(A)
     B = np.expand_dims(A, axis=d)
     B = np.repeat(B,n,axis=d)
@@ -82,8 +85,23 @@ def int2ZMat(A,N=2,n=None):
 def modDiv(a,b,N):
     return np.mod(a//b,N)
 
+def emptyadj(A,n):
+    if n ==0:
+        return A
+    s = list(np.shape(A))
+    if n+len(s) < 0:
+        return ZMat([])
+    if n > 0:
+        s =  s + [0]*n
+    if n < 0:
+        s = s[:n + len(s) +1]
+    return np.reshape(A,s)
+
 def ZMat2int(A,N=2):
     A = ZMat(A)
+    ## need to cover situation where array is empty
+    if np.size(A) == 0:
+        return emptyadj(A,-1)    
     n = np.shape(A)[-1]
     Ni = N ** np.arange(n-1,-1,-1)
     return np.apply_along_axis(func1d=np.dot,axis=-1,arr=A,b=Ni)

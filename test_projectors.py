@@ -1,7 +1,7 @@
 from XPAlgebra import *
 from common import *
 print('log2ceil(128)',logCeil(128))
-n = 7
+n = 5
 m = 1 << (n-2)
 N = 4
 P = 16
@@ -11,7 +11,15 @@ S1,c = StateRandom(N,n,m)
 print('Random State S1')
 print(State2Str(S1,N))
 res = State2C(S1,N)
+# print(res)
 print('Test conversion to complex nparray',State2C(S1,N,C=res))
+a = stateAmplitude(S1,N)
+print('Test amplitude',stateAmplitude(S1,N,C=a))
+
+res = State2C(S1,N,c)
+print('Test conversion to complex nparray with weights',State2C(S1,N,c,C=res))
+a = stateAmplitude(S1,N,c)
+print('Test amplitude with weights',stateAmplitude(S1,N,c,C=a))
 
 S2,c = StateRandom(N,n,m)
 print('Random State S2')
@@ -33,7 +41,7 @@ print('Eigenvalues of A',Evals)
 l = np.random.choice(Evals)
 # l = 0
 print('Measure Eigenvalue',l)
-A[0] = np.mod(A[0] - l,2*N)
+A[-1] = np.mod(A[-1] - l,2*N)
 print('Adjusted operator A',XP2Str(A,N))
 Evals = XPEigenvalues(A,N)
 print('Eigenvalues of A',Evals)
