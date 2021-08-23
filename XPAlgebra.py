@@ -132,6 +132,8 @@ def XPSetN(A,N,P):
 ## Return string representation of XP operator A with precision N
 def XP2Str(A,N):
     A = ZMat2D(A)
+    if len(A) == 0:
+        return 'None'
     C = XPcomponents(A)
     C[0] = np.transpose([C[0]])
     cMod = [2*N,2,N]
@@ -213,9 +215,9 @@ def XPD(z):
 ## test binary function on XP operators
 def XPTestBinary(A,B,N,C,f):
     # print(func_name(),A,B,N,C,f)
-    if np.ndim(A)> 0:
+    if np.ndim(A) > 1:
         return [f(A[i],B,N,C[i]) for i in range(len(A))]
-    if np.ndim(B)> 0:
+    if np.ndim(B) > 1:
         return [f(A,B[i],N,C[i]) for i in range(len(B))]
     return f(A,B,N,C)
 
@@ -459,6 +461,7 @@ def XPMat(x,z,N):
 
 ## action of projector onto +1 Eigenspace of A on state S
 def XPProj(A,S,N,C=False):
+    # print(func_name(),'S',S)
     if np.ndim(S) == 1:
         S = ZMat([S])
     if C is not False:
@@ -474,10 +477,14 @@ def XPProj(A,S,N,C=False):
         return np.isclose(S1,S3).all()
     if XPisDiag(A):
         AS = XPMul(A,S,N)
+        # report('S',S,XPp(S))
+        # report('AS',State2Str(AS,N),XPp(AS))
         ## dp = change in phase between S and AS
         dp = np.mod(XPp(AS) - XPp(S),2*N)
         # print(func_name(),'dp',dp,dp==0)
         ## return only elements |e> of S where A|e> = |e>
+        ## Double precision
+        S = XPSetN(S,N,2*N)
         return S[dp == 0,:],None
     ## filter S by elements where A^2|e> = |e>
     A2 = XPSquare(A,N)
@@ -665,11 +672,16 @@ def StateEqual(s1,s2):
 def State2Str(S,N,c=None,C=False):
     S = ZMat2D(S)
     if len(S) == 0:
-        return ""
+        return "None"
     if c is None:
         coeff = [""] * len(S)
     else:
-        coeff = ["" if ci == -1 else f'c{ci}' for ci in c]
+        # coeff = ["" if ci == -1 else f'c{ci}' for ci in c]
+        ## display coeff as float to 3 decimal points
+        coeff = Cos2C(c,N)
+        coeff = np.char.mod("%0.3f",coeff)
+        ix = [ci ==0 for ci in c]
+        coeff[ix] = ""
     coeff = np.array(coeff)
     p,x,z = XPcomponents(S)
     x = ZMat2str(x,2)

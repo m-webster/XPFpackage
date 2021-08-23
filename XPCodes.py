@@ -78,10 +78,10 @@ def simplifyZ(SZ,N):
     return SZ
 
 ## Simplify Z component of SX
-def simplifyXZ(SXzp,SZzp,N):
-    n = max(np.shape(SXzp)[-1],np.shape(SZzp)[-1])
-    SXzp = ZMat([ZResidual(SZzp,zp,N)[0] for zp in SXzp],n)
-    return SXzp
+def simplifyXZ(SX,SZ,N):
+    n = max(np.shape(SX)[-1],np.shape(SZ)[-1])
+    SX = ZMat([ZResidual(SZ,zp,N)[0] for zp in SX],n)
+    return SX
 
 ## vectorized version of Div
 vDiv = np.vectorize(Div)
@@ -261,7 +261,7 @@ def getT(Em):
     n = len(m0)
     Em = ZMat(Em,n)
     EmSet = {tuple(m) for m in Em}
-    Em0 = [np.mod(m - m0,2) for m in Em[1:]]
+    Em0 = [np.mod(m - m0,2) for m in Em]
     T = []
     for x in Em0:
         Emx = np.mod(Em + x,2)
@@ -284,6 +284,8 @@ def cosetDecomposition(Em):
         Eq,LIndex,QIndex = [],[],[]
         Xnsp = NSpace(LXx,2)
         LXx = RemoveZeroRows(Xnsp.H)
+        if len(LXx) == 0:
+            LXx = ZMatAddZeroRow(LXx)
         Eq = set()
         qCount = 0
         for e in Em:
@@ -315,7 +317,7 @@ def getEm(S,N,check=False):
     li = leadingIndices(XPx(SX))
     x = ZMat([2]*(n+1))
     x[li] = 0
-    x[-1] = 1
+    # x[-1] = 1
     report('x',x,"\n")
 
     ## array of Z and phase components
@@ -391,6 +393,8 @@ def OrbitOperator(SX,N,t=None):
 ## can also be used for Eq/GX
 def getCodewords(EmState,SX,N,t=None):
     OSx,SIndex = OrbitOperator(SX,N,t)
+    # report(func_name(),'OSx')
+    # report(XP2Str(OSx,N))
     return ZMat([XPMul(OSx,m,N) for m in EmState]),SIndex
 
 def checkCodewords(codeWords,G,N):
@@ -452,6 +456,22 @@ def getLZ(MZz,nsp,N,n):
     nsp.simplifyH()
     return makeXP(0,0,ZMat(nsp.H,n))
 
+def CW2LI(CW,N):
+    # print(func_name(),CW)
+    E = XPx(CW[0]) 
+    T = getT(E)
+    nsp = NSpace(T,2)
+    nsp.simplifyH()
+    SXx = nsp.H
+    # print('SXx',ZmatPrint(SXx))
+    n = XPn(CW[0])
+    CW1 = ZMat([np.vstack(CW)]) 
+    nsp = getNsp(CW1,N)
+    SX = CW2LX(CW,SXx,nsp,N)
+    M = getLI(SX,nsp,N,n)
+    # print(func_name(),XP2Str(M,N))
+    return M
+
 ## Calculate non-diagonal logical operators from Codewords
 def CW2LX(CW,LXx,nsp,N):
     n = XPn(CW[0])
@@ -474,12 +494,17 @@ def getLX(x,CW,CWphases,nsp,N):
     Deltap = []
     ## adjustment factor - either 0 or 1
     a = []
+    
     for i in range(len(CW)):
         p0,x0,z0 = XPcomponents(CW[i])
         # report('x0',x0)
         x1 = np.mod(x0+x,2)
         p1 = ZMat([CWphases[tuple(e)] for e in x1])
+        # report("p'")
+        # report(p1)
         dp = np.mod(p1 - p0,2*N)
+        # report("p'' is the change in phase when applying the operator ")
+        # report(dp)
         # report('dp',dp)
         ## adjust precision of phase to N
         if N % 2 ==0:
@@ -498,7 +523,10 @@ def getLX(x,CW,CWphases,nsp,N):
         a.append(ai)
         Deltap.append(dp)
     Deltap = np.hstack(Deltap)
-    # report('Deltap',Deltap)
+    A = makeXP(0,x,0)
+    report("p''' represents the change in phase to each basis element in the codewords when applying the operator ",XP2Str(A,N))
+    report(Deltap)
+
     ## try to find a valid z component
     k,o = nsp.makeOffset(Deltap)
     if not(isZero(o)):
@@ -507,6 +535,8 @@ def getLX(x,CW,CWphases,nsp,N):
         return False
     else:
         ## get z component and phase vector
+        report("b = (z|q) represents the Z component and phase vector of an operator which applies the change in phase p''':")
+        report(k)
         z,f = k[:n],k[n:]
         ## adjust the overall phase of the operator - but only if size of f is 1:
         if len(f) > 1:
@@ -727,18 +757,21 @@ class Code:
         return wI
 
     def getLD(self):
+        N = self.N
         L,EmState,wI = getVals(self,['LO','EmState','wI'])
         LX,LZ = splitDiag(L)
         LZ = np.vstack([wI,LZ])
-        FZ = [Fvector(A,EmState,self.N) for A in LZ]
+        FZ = [self.Fvector(A) for A in LZ]
         nsp = NSpace(FZ,2*N)
-        nsp.simplifyH()
         FD = nsp.getVal('H')
+        ix = [not isZero(A) for A in FD]
+        ix = [i for i in range(len(FD)) if not isZero(FD[i])]
+        FD = FD[ix]
         U = nsp.getVal('P')
         Zp = XP2Zp(LZ,N)
         Zp = matMul(U,Zp,2*N)
         LD = Zp2XP(Zp,N)
-        LD = RemoveZeroRows(LD)
+        LD = LD[ix]
         setVal(self,'FD',FD)
         return LD
 
@@ -822,11 +855,41 @@ class Code:
 ##        Measurements         ##
 ################################# 
 
+
+## measure abritrary XP operator A by applying projectors onto the code words
+def MeasureCodewords(CW,A,N):
+    # report(func_name(),CW)
+    n = XPn(A)
+    nZero = ZMatZeros(n)
+    A0 = np.sum([stateAmplitude(c,N) for c in CW])
+    # for S in CW:
+    #     print(S)
+    # report('Amplitude of pre-measurement codewords: ',A0)
+    L = XPEigenvalues(A,N)
+    ## outcome probabilities
+    p1 = []
+    ## projected codewords
+    CW1 = []
+    P = 2*N
+    for l in L:
+        B = makeXP(-l,nZero,nZero)
+        ## update phase of operator A to ensure we are using the right projector
+        C = XPMul(A,B,N)
+        # report('l,C',l,XP2Str(C,N))
+        ## apply projector to codewords
+        Scl = [XPProj(C,S,N) for S in CW]
+        CW1.append(Scl)
+        ## calculate outcome probability
+        Al = sum([stateAmplitude(Sl,P,cl) for Sl,cl in Scl ])
+        p1.append(Al/A0)
+    return L, p1, CW1
+
+## parity function for measuring diagonal Paulis
 def Par(x,z):
     return matMul(z,np.transpose(x),2)[0]
 
 def MeasureDiagPauli(Eq,SX,LX,z,N):
-    report(func_name(),np.shape(SX),np.shape(LX))
+    # report(func_name(),np.shape(SX),np.shape(LX))
     ## get X components of SX,LX
     SXx,LXx = XPx(SX),XPx(LX)
     ## split SX into parity 0/1 operators
@@ -847,6 +910,7 @@ def MeasureDiagPauli(Eq,SX,LX,z,N):
         LX1 = np.delete(LX1,0,axis=0)
     ## update SX,LX,Eq if B is found
     if B is not None:
+        
         ## Update Eq
         x = XPx(B)
         Eq = np.vstack([Eq,np.mod(Eq+x,2)])
@@ -858,10 +922,23 @@ def MeasureDiagPauli(Eq,SX,LX,z,N):
         if len(LX1) > 0:
             LX1 = XPMul(B,LX1,N)
             LX = np.vstack([LX,LX1])
+        report('Found B =', XP2Str(B,N))
+        report('Updated Core: Eq =')
+        report(ZmatPrint(Eq,2))
+        report('Updated Non-Diagonal Canonical Generators: SX =')
+        report(XP2Str(SX,N))
+        report('Updated Logical X Operators: LX =')
+        report(XP2Str(LX,N))
+    else:
+        report('B not found - no update to Eq, SX, LX')
     nEq = len(Eq)
     ## split Eq into parity 0/1 vectors
     ix = Par(Eq,z)
     Eq0,Eq1 = Eq[ix==0],Eq[ix==1]
+    # report('Eq+ =')
+    # report(ZmatPrint(Eq0,2))
+    # report('Eq- =')
+    # report(ZmatPrint(Eq1,2))    
     ## return updated core format for outcome +1 and -1
     return (Eq0,SX,LX,len(Eq0)/nEq),(Eq1,SX,LX,len(Eq1)/nEq)
 

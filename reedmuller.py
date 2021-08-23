@@ -1,5 +1,4 @@
 import numpy as np
-import NSpace as ns
 import itertools
 from common import *
 from XPCodes import *
