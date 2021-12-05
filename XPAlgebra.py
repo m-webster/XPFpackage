@@ -151,7 +151,12 @@ def row2strAlt(x,c):
 def p2strAlt(p):
     return  "" if p < 2 else f'^{{{p}}}'
 
+def phase2strAlt(p):
+    w = '' if p ==0 else '\omega' 
+    return  w if p < 2 else f'{w}^{{{p}}}'    
+
 vp2strAlt = np.vectorize(p2strAlt)
+vphase2strAlt = np.vectorize(phase2strAlt)
 
 ## alternative way of printing XP operators - using old-school X,Z,S,T etc - for insertion into TeX
 def XP2StrAlt(A,N):
@@ -163,9 +168,9 @@ def XP2StrAlt(A,N):
     c = symdict[N] if N in symdict else 'P'
     p,x,z = XPcomponents(A)
     x,z = row2strAlt(x,'X'),row2strAlt(z,c)
-    p = vp2strAlt(p)
-    temp = [f'\omega_{{{N}}}{p[i]}{x[i]}{z[i]}' for i in range(len(p))]
-    return "\n".join(temp)    
+    p = vphase2strAlt(p)
+    temp = [f'{p[i]}{x[i]}{z[i]}' for i in range(len(p))]
+    return "\\\\\n".join(temp)    
 
 # Input: string representing XP operator in format 'XP_N(p|x|z)'
 # Output: XP operator in vector format
@@ -349,7 +354,7 @@ def XPDegree(A,N,C=False):
         return True
     M = XPdeg(A,N)
     M2 = 2* XPdeg(XPSquare(A,N),N)
-    return np.where(XPisDiag,M,M2)
+    return np.where(XPisDiag(A),M,M2)
 
 ## return fundamental phase of XP operator A with precision N
 def XPFundamentalPhase(A,N):
@@ -385,8 +390,10 @@ def XPRandom(n,N,m=None):
 
 ## Adjust the phase of XP operator A so 1 is an Eigenvalue
 def XPSetEval(A,N):
+    # report(func_name(),'A',XP2Str(A,N))
     p,x,z = XPcomponents(A)
     f,d = XPFundamentalPhase(A,N)
+    # report('f,d',f,d)
     Np = 2*N
     p = np.mod(p - f // d,Np)
     return XPmergeComponents([p,x,z])
@@ -691,3 +698,9 @@ def State2Str(S,N,c=None,C=False):
     eStr =  [f'{coeff[i]}{omega[i]}|{x[i]}>' for i in range(len(S))]
     return "+".join(eStr) 
 
+## transform basis vector e to XP operator with zero phase and z components
+def vec2state(e):
+    s = np.shape(e)
+    p = 0 if len(s)<2 else ZMatZeros(s[0])
+    z = ZMatZeros(s)
+    return XPmergeComponents([p,e,z])

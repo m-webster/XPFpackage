@@ -1,6 +1,7 @@
 import numpy as np
 import sys
 import itertools
+import time
 
 ## object helper functions
 ## simplify display of complex np.arrays
@@ -9,6 +10,19 @@ np.set_printoptions(precision=3,suppress=True)
 # def argsort(seq):
 #     # http://stackoverflow.com/questions/3071415/efficient-method-to-calculate-the-rank-vector-of-a-list-in-python
 #     return sorted(range(len(seq)), key=seq.__getitem__)
+
+
+def currTime():
+    return time.process_time()
+
+def startTimer():
+    global startTime
+    startTime = currTime()
+    return startTime
+
+def elapsedTime():
+    global startTime
+    return -startTime + startTimer()
 
 def func_name():
     """
@@ -170,6 +184,7 @@ def argsort(seq,reverse=False):
     # http://stackoverflow.com/questions/3071415/efficient-method-to-calculate-the-rank-vector-of-a-list-in-python
     return sorted(range(len(seq)), key=seq.__getitem__,reverse=reverse)
 
+## optimize
 def weight(A):
     return sum([1 if a > 0 else 0 for a in A])
 
@@ -248,7 +263,7 @@ def set2Bin(n,t):
 ## iterator - rows correspond to subsets of [0..n-1] of size between w1 and w2
 def BinPowerset(n,w1=None,w2=None):
     w1 = n if w1 is None else min(w1,n)
-    wrange = range(w1) if w2 is None else range(w1,w2)
+    wrange = range(w1+1) if w2 is None else range(w1,w2+1)
     for w in wrange:
         for t in itertools.combinations(range(n),w):
             yield set2Bin(n,t) 
@@ -359,6 +374,7 @@ def mat2list(b):
 #     temp = [arr2str(r)  for r in A]
 #     return sep.join(temp)
 
+## optimise
 def Highbit(r):
 # print('r',r)
     i = 0
@@ -411,6 +427,10 @@ def unsetVerbose():
     global verbose, verbose_old
     if len(verbose_old):
         verbose = verbose_old.pop() 
+
+def getVerbose():
+    global verbose
+    return verbose
 
 ### variable storage ####
 
