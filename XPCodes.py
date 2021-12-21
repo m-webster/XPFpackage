@@ -8,31 +8,35 @@ import itertools
 ## doesn't factor in order of operators...
 def XPSpan(S,N):
     S = ZMat2D(S)
-    S = ZMatSort(S)
+    # S = ZMatSort(S)
     # ## G is the group generated
     # G = []
     ## U - set to avoid duplications in G
     U = set()
     ## Maxpowers: m such that A^m = I
     f,d = XPFundamentalPhase(S,N)
-    g = np.gcd(f,2*N)
-    maxPowers = d * 2*N // g
+    A = np.gcd(f,2*N)
+    # print('f,d,A',f,d,A)
+    maxPowers = d * 2*N // A
     # report('maxPowers',maxPowers)
     Sm = XPPower(S,N,maxPowers)
     # report('Sm')
     # report(XP2Str(Sm,N))
     ## convert into range for itertools
     maxPowers = [range(a) for a in maxPowers]
-    for t in itertools.product(*maxPowers):
-        g = None
-        for i in range(len(maxPowers)):
-            h = XPPower(S[i],N,t[i])
-            g = h if g is None else XPMul(g,h,N)
-        t = tuple(g)
-        if t not in U:
+    # print('maxPowers',maxPowers)
+    for u in itertools.product(*maxPowers):
+        # g = None
+        # for i in range(len(maxPowers)):
+        #     h = XPPower(S[i],N,t[i])
+        #     g = h if g is None else XPMul(g,h,N)
+        A = GeneratorProduct(S,u,N)
+        # strA = XP2Str(A,N)
+        strA = tuple(A)
+        if strA not in U:
             # G.append(g)
-            U.add(t)
-            yield g
+            U.add(strA)
+            yield A
     # return ZMat2D(G)
 
 ## split XP operators into non-diagonal and diagonal operators
@@ -595,6 +599,7 @@ def checkCodewords(codeWords,G,N):
 ## Codewords can be partial (eg orbit distance t from Em for Logical Operators)
 def getNsp(CW,N):
     # # report(func_name(),ZMat2tuple(CW))
+    # print(func_name(),ZMat2tuple(CW))
     m = len(CW)
     EL = []
     for i in range(m):
@@ -638,7 +643,7 @@ def getLZ(MZz,nsp,N,n):
 def CW2LI(CW,N):
     # print(func_name(),CW)
     E = XPx(CW[0]) 
-    T = getT(E)
+    T = np.mod(E + E[0],2)
     nsp = NSpace(T,2)
     # nsp.simplifyH()
     SXx = nsp.H
@@ -1054,8 +1059,28 @@ class Code:
     def getdistance(self):
         M = getVal(self,'LI')
         L = getVal(self,'LO')
-        ML = XPSpan(np.vstack([M,L]),self.N)
-        return minDistance(ML)
+        d = self.n
+        N = self.N
+        for A in XPSpan(L,N):
+            print('A',XP2Str(A,N))
+            R, u = XPResidual(M,A,N)
+            if not isZero(R):
+                dA = self.n
+                CA = None
+                for B in XPSpan(M,N):
+                    C = XPMul(A,B,N)
+                    d2 = XPdistance(C)
+                    if d2 > 0 and d2 < dA:
+                        dA = d2
+                        CA = C
+                R, u = XPResidual(M,CA,N)
+                # print('R',XP2Str(R,N))
+                # print('u',u)
+                # print('CA',XP2Str(CA,N))
+                # print('isLO',isLO(CA,M,N))
+                if dA < d:
+                    d = dA
+        return d
 
     def getLogicalZ(self):
         LIndex,LD,FD = getVals(self,['LIndex','LD','FD'])
@@ -1065,7 +1090,7 @@ class Code:
         else:
             k = len(LIndex[0])
             for i in range(k):
-                la = LIndex[:,i] * N
+                la = LIndex[:,i] * self.N
                 A = ActionSolve(la,LD,FD,self.N)
                 if A is not None:
                     LogicalZ.append(A)
