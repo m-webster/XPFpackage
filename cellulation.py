@@ -1,11 +1,9 @@
 import matplotlib
 import numpy as np
-from numpy.lib.function_base import angle
 from XPCodes import *
 from common import *
 from NSpace import *
 from XPAlgebra import *
-from graph_states import *
 import pylab as pl
 from matplotlib import collections  as mc
 import matplotlib.pyplot as plt
@@ -180,6 +178,33 @@ class Cellulation:
         # print(func_name(), facesDone)
         self.faceset = facesetNew
 
+    ## remove cell c of dimension d
+    def remCell(self,c,d):
+        if c not in self.cells[d]:
+            return False
+        # print(func_name(),'before',self.genus())
+        mycell = self.remAdj(c,d)
+        for i in range(d,3):
+            if i > d:
+                for k in mycell.adj[i]:
+                    self.remAdj(k,i)
+            self.setIndex(i)
+        # print(func_name(),'after',self.genus())
+
+    ## remove all adj references to cell c of dimension d
+    def remAdj(self,c,d):
+        if c not in self.cells[d]:
+            return False
+        mycell = self.cells[d].pop(c)
+        for i in range(3):
+            for k in mycell.adj[i]:
+                if k in self.cells[i] and c in self.cells[i][k].adj[d]:
+                    self.cells[i][k].adj[d].remove(c)
+        if d == 2:
+            self.faceset.remove(c)
+        return mycell
+
+
     ## for qubit index for cells of dimension i
     def setIndex(self,i):
         HList = self.cells[i]
@@ -189,36 +214,11 @@ class Cellulation:
             midpoints = [HList[k].midpoint for k in mykeys]
         else:
             ## When i > 0, we form tuples of the indices of the vertices making up the face
-            midpoints = [tuple(sorted([self.cells[0][v].index for v in k])) for k in mykeys]
+            midpoints = [tuple(sorted([self.cells[0][v].index for v in self.cells[i][k].adj[0]])) for k in mykeys]
         indices = argsort(midpoints)
         
         for i in range(len(indices)):
             HList[mykeys[indices[i]]].index = i
-
-    # def addTail(self):
-    #     faces = self.boundary()
-    #     i = 0
-    #     for f in faces:
-    #         i += 1
-    #         p = (0,-i)
-    #         q = f[0]
-    #         e = (p,q)
-    #         ## add e as a neighbour to existing point q
-    #         self.cells[0][q].adj[1].add(e)
-    #         ## add new point
-    #         c = HyperPlane(p,0)
-    #         c.adj[1].add(e)
-    #         self.cells[0][p] = c
-    #         ## add new edge
-    #         c = HyperPlane(e,1)
-    #         c.adj[0].add(p)
-    #         c.adj[0].add(q)
-    #         self.cells[1][e] = c
-            
-    #         print(func_name(),f[0])
-    #     for i in range(2):
-    #         setOrder(self.cells[i])
-    #     return True
 
     def genus(self):
         F = len(self.cells[2])
@@ -352,6 +352,51 @@ class Cellulation:
         self.index2cell = ix2cell
         self.cell2index = cell2ix2
         self.qubitLocation = ix2loc
+    
+    
+    ## Has the effect of slicing off the boundary along dual lattice
+    ## Removes vertices and edges on the boundary
+    ## Keeps faces and edges sliced in half, but updates adjacency matrix
+    def removeBoundary(self,BList):
+        BLabels = 'UDLR'
+        Bdy = self.boundary()[0]
+        segments = UDBoundary(Bdy) + LRBoundary(Bdy)
+        for s in BList:
+            seg = segments[BLabels.index(s)]
+            for i in range(len(seg)):
+                if i + 1 < len(seg):
+                    e = (seg[i],seg[i+1])
+                    if e not in self.cells[1]:
+                        (x,y) = e
+                        e = (y,x)
+                    self.remAdj(e,1)
+                self.remAdj(seg[i],0)
+        for i in range(2):
+            self.setIndex(i)
+
+
+    ## remove pCount points from iterior
+    def removePoints(self,pCount):
+        if pCount < 1:
+            return True
+        bdy = set(self.boundary()[0])
+        toRemove = []
+        for v,c in self.cells[0].items():
+            vBdy = set()
+            for f in c.adj[2]:
+                vBdy.update(set(f))
+            vBdy.remove(v)
+            if len(vBdy.intersection(bdy)) == 0:
+                toRemove.append(v)
+                bdy.update(vBdy)
+        i = 0
+        for v in toRemove:
+            self.remCell(v,0)
+            i+=1
+            if i >= pCount:
+                break
+        for i in range(3):
+            self.setIndex(i)
 
 def square_unit(o):
     offsets = ZMat([[0,0,2,2],[0,2,2,0]])
@@ -427,6 +472,8 @@ def squareTorus(o,r,c):
     faces = square_plane(o,r,c)
     g = Cellulation(faces)
     return Torus(g)
+
+
 
 def Torus(g):
     Bdy = g.boundary()[0]
@@ -513,8 +560,6 @@ def applyOperator(n,ix,A):
     bp = len(ix)*p
     bx = ZMatZeros(n)
     bz = ZMatZeros(n) 
-    # print(func_name(),A)
-    # print(func_name(),ix)
     for i in ix:
         bx[i] = bx[i] + x
         bz[i] = bz[i] + z
@@ -525,6 +570,7 @@ def vertex_operator(g,A,B=None):
     n = len(g.cells[1])
     for a in g.cells[0].keys():
         ix = [g.cells[1][b].index for b in g.cells[0][a].adj[1]]
+        
         op = applyOperator(n,ix,A)
         if B is not None:
             ## edges on neighbouring plaquettes
@@ -667,16 +713,10 @@ def union_jack_code(g):
     n = len(g.cells[0]) + len(g.cells[1])
     G = UJNonDiag(g)
 
-    ## apply Z operator to edges around each face
-    for flabel,fCell in g.cells[2].items():
-        ix = [g.cell2index[e] for e in fCell.adj[1]]
-        G.append(applyOperator(n,ix,Z))
-    
-    ## apply Z operator on each edge
-    for elabel,eCell in g.cells[1].items():
-        ix = [g.cell2index[v] for v in eCell.adj[0]]
-        ix.append(g.cell2index[elabel])
-        G.append(applyOperator(n,ix,Z))
+    Sz = kerIA(XPx(G))
+    SZ = makeXP(0,0,Sz*N//2)
+    G = np.vstack([G,SZ])
+
     return G,N    
 
 
@@ -723,19 +763,46 @@ def APhase(w,t):
             temp.extend(omega(w,VList[i:i+3],t))
     return temp
 
+def allocatePos(vList,angleList):
+    temp = ['*' for i in range(6)]
+    pi = np.pi
+    for i in range(len(vList)):
+        v,a = vList[i],angleList[i]
+        if np.isclose(0,a):
+            ix = 0
+        elif np.isclose(pi,a):
+            ix = 3
+        elif a < pi/2:
+            ix = 1
+        elif a < pi:
+            ix = 2
+        elif a < 3*pi/2:
+            ix = 4
+        else:
+            ix = 5
+        temp[ix] = v
+    return temp
+
 def applyQTD(g,w):
+    toRemove = [k for k,c in g.cells[0].items() if len(c.adj[2]) == 1]
+    ## remove points shared by only one face
+    # print(func_name(),'toRemove',toRemove)
+    for k in toRemove:
+        g.remCell(k,0)
     D = max(w) +1
     APhases = []
     offset = np.array([0,0.1])
     eList = sorted(g.cells[1].keys())
     index2cell = [(e,i) for i in range(D) for e in eList]
     cell2index = {index2cell[i]:i for i in range(len(index2cell))}
+    ## allow for any missing lattice edges
+    for i in range(D):
+        cell2index[('*',i)] = -1
     qubitLocation = [midpoint(e) + i * offset for i in range(D) for e in eList]
     n = len(index2cell)
     # print('n',n)
     ## ancilla qubits
     aList = []
-
     ## phases for each non-diagonal generator
     for i in range(D):
         t = set2Bin(D,[i])
@@ -755,6 +822,11 @@ def applyQTD(g,w):
     for v in g.cells[0].keys():
         ## generate list of vertices around v ordered by angle
         vList,angleList = pointAngleSort(g,v)
+        if len(vList) < 6:
+            print(func_name(),vList,angleList)
+            vList = allocatePos(vList,angleList)
+            print(vList)
+        
         ## qubits on edges adjacent to the vertex v
         inner = []
         ## qubits on edges on boundary of hexagon centred on v
@@ -767,10 +839,14 @@ def applyQTD(g,w):
             e = (v,vi)
             if e not in g.cells[1]:
                 e = (vi,v)
+            if vi == '*':
+                e = '*'
             inner.append(e)
             e = (vj,vi)
             if e not in g.cells[1]:
                 e = (vi,vj) 
+            if vi == '*' or vj == '*':
+                e = '*'
             outer.append(e)  
         eList = inner + outer 
         vLists.append(eList)
@@ -780,10 +856,12 @@ def applyQTD(g,w):
             aix = cell2index[(eList[a[0]],a[1])]
             bix = cell2index[(eList[b[0]],b[1])]
             # aix = (eList[a[0]],a[1])
-            # bix = (eList[b[0]],b[1])            
+            # bix = (eList[b[0]],b[1])
             if aix > bix:
                 aix,bix = bix,aix
-            aQubits.add((aix,bix))
+            ## only add ancilla qubit if both vertices are in the lattice
+            if aix >= 0 and bix >= 0:  
+                aQubits.add((aix,bix))
     ## sort the ancilla qubits by label and update cell2index
     aQubits = sorted(aQubits)
     index2cell.extend(aQubits)
@@ -798,7 +876,8 @@ def applyQTD(g,w):
         loc = (qubitLocation[a] + qubitLocation[b])/2
         qubitLocation.append(loc)
     ## n is the total number of qubits
-    n = len(cell2index)
+    # n = len(cell2index)
+    n += len(aQubits)
     ## G - list of generators to be returned
     G = []
     N = 4
@@ -814,6 +893,8 @@ def applyQTD(g,w):
             S3ix = []
             ## apply X operators around the internal edges
             Xix = [cell2index[(e,z)] for e in vList[:6]]
+            ## remove any edges not in lattice
+            Xix = [x for x in Xix if x >= 0]
             ## associated ancilla Qubits
             Aix = []
             for x in Xix:
@@ -823,32 +904,33 @@ def applyQTD(g,w):
             for A in APhases[z]:
                 ## convert to qubit indices for each edge
                 B = sorted([cell2index[(vList[a[0]],a[1])] for a in A])
-                if A in aList:
-                    ## 2 edges, different levels
-                    ## qubit index of ancilla
-                    Aix = cell2index[tuple(B)]
-                    ## apply S and X to ancilla
-                    # Xix.append(Aix)
-                    Six.append(Aix)
-                    ## apply S^3 to the other 2 edges in the phase
-                    S3ix.extend(B)
-                elif len(A) == 1:
-                    ## 1 edge, apply Z
-                    Zix.append(B[0])
-                else:
-                    ## 2 edges, same level
-                    ## find the third edge c of the triangle 
-                    a,b = A
-                    az = a[1]
-                    a,b = vList[a[0]],vList[b[0]]
-                    c = tuple(list(set(a).symmetric_difference(set(b))))
-                    if c not in g.cells[1]:
-                        c = c[1],c[0]
-                    # print('a,b,c',a,b,c)
-                    ## apply S^3 to the 2 edges in the phase
-                    S3ix.extend(B)
-                    ## and S to the third edge
-                    Six.append(cell2index[(c,az)])
+                if B[0] >= 0:
+                    if A in aList:
+                        ## 2 edges, different levels
+                        ## qubit index of ancilla
+                        Aix = cell2index[tuple(B)]
+                        ## apply S and X to ancilla
+                        # Xix.append(Aix)
+                        Six.append(Aix)
+                        ## apply S^3 to the other 2 edges in the phase
+                        S3ix.extend(B)
+                    elif len(A) == 1:
+                        ## 1 edge, apply Z
+                        Zix.append(B[0])
+                    else:
+                        ## 2 edges, same level
+                        ## find the third edge c of the triangle 
+                        a,b = A
+                        az = a[1]
+                        a,b = vList[a[0]],vList[b[0]]
+                        c = tuple(list(set(a).symmetric_difference(set(b))))
+                        if c not in g.cells[1]:
+                            c = c[1],c[0]
+                        # print('a,b,c',a,b,c)
+                        ## apply S^3 to the 2 edges in the phase
+                        S3ix.extend(B)
+                        ## and S to the third edge
+                        Six.append(cell2index[(c,az)])
             ## make the generator A
             A = applyOperator(n,Xix,X)
             A += applyOperator(n,Six,S)
@@ -894,138 +976,3 @@ def applyWeightedGraph(g,Edges,Weights=None):
         W.append(w)
     return E,W
 
-
-# def main():
-#     torus = True
-#     o,r,c = (1,1),4,6
-
-#     # faces = tri_plane(o,r,c)
-#     # faces = square_plane(o,r,c)
-#     # faces = hex_plane(o,r,c)
-
-#     ## Union Jack State
-#     faces = tri_square_plane(o,r,c)
-#     Edges = [(0,1,2)]
-    
-
-#     ## 2D Cluster State
-#     # faces = square_plane(o,r,c)
-#     # Edges = [(0,1),(1,2),(2,3),(3,0)]    
-
-
-
-#     g = Cellulation(faces)
-    
-#     if torus:
-#         g = Torus(g)
-
-#     ## Apply weighted graph to g
-#     E,W = applyWeightedGraph(g,Edges)
-#     GState = graphState(E,W)
-#     G,N = GState.XPCode(),GState.N
-#     g.SX2cell(GState.SXx)
-
-#     # G,N = SurfaceCode(g)
-#     # G,N = SemionCode(g)
-#     # G,N = TQDZ2Code(g)
-#     # G,N = XZZXCode(g)
-
-
-#     # print('State')
-#     # print(State2Str(GState.State(),N))
-
-#     print('Generators',len(G))
-#     # for A in G:
-#     #     g.display(show_operator=A,save=True)
-
-#     print('n=',XPn(G))
-#     C = Code(G,N)
-
-#     # print("Symmetry Check")
-#     # LI = getVal(C,'LI')
-#     # Symm = C.ZSymmetries()
-    
-#     # for x in Symm:
-#     #     A = makeXP(0,x,0)
-#     #     r,u = XPResidual(LI,A,N)
-#     #     s = str(ZMat2str(x[:n]))
-#     #     print(s,"is logical identity",isZero(r))
-#     #     s = s.replace('0',' ')
-#     #     M = m + (0 if torus else 1)
-#     #     for i in range(len(s)//M):
-#     #         print(s[M*i:M*i + M])
-    
-
-#     # # setVerbose(True)
-#     S = getVal(C,'S')
-#     print('Em')
-#     Em = getVal(C,'Em')
-#     print(len(Em))
-#     print('Eq')
-#     Eq,LXx = cosetDecomposition(Em)
-#     print('len(Eq)',len(Eq))
-#     # # print(ZmatPrint(Eq))
-#     # print('LXx')
-#     # print(ZmatPrint(LXx))
-#     # # Eq,LXx = getVals(C,['Eq','LXx'])
-#     # # print('Eq',len(Eq))
-#     # # print(ZmatPrint(Eq))
-#     # # print('LXx',len(LXx))
-    
-#     # # # return False
-#     # # print('Now for the slow stuff')
-#     S,LI,LX,LO,LD,FD = getVals(C,['S','LI','LogicalX','LO','LD','FD'])
-#     # print('CanonicalGenerators',CanonicalGenerators(G,N,S))
-#     print('LI')
-#     print(XP2Str(LI,N))
-#     # for A in LI:
-#     #     g.display(show_operator=A)
-#     # P = N
-#     # LOP = C.getLO(P)
-#     # LIP = C.getLI(P)
-#     print('LO')
-#     # B = GeneratorProduct(LI[:m],[1]*m,N)
-#     # g.display(show_operator=B)
-#     for A in LO:
-#         print(XP2Str(A,N),isLO(A,LI,N))
-#         g.display(show_operator=A)
-#         # print(XP2Str(XPMul(A,B,N),N))
-    
-#     # print('distance',C.getdistance())
-#     # B = C.ZSymmetries()
-#     # print('Z2 Symmetries')
-#     # print(XP2Str(B,N))
-#     # print('FD')
-#     # print(FD)
-#     # # print('LD')
-#     # # print(XP2Str(LD,N))
-
-#     # print('LI Precision',N,len(LI))
-#     # # print(XP2Str(LI,N))
-#     # P = 2*N
-#     # LI_P = C.getLI(P)
-#     # print('LI Precision',P,len(LI_P))
-#     # # print(XP2Str(LI_P,P))
-
-#     # print('LO Precision',N,len(LO))
-#     # for A in LO:
-#     #     print(XP2Str(A,N),isLO(A,LI,N))
-
-#     # LO_P = C.getLO(P)
-#     # print('LO Precision',P,len(LO_P))
-#     # for A in LO_P:
-#     #     print(XP2Str(A,P),isLO(A,LI_P,P))
-
-#     #t = squareTorus((0,0),3,3)
-    
-#     #print(semionZ2(3))
-#     ##s = colour_2d_triangular_SX()
-#     ##print(s)
-
-#     # g.display(show_qubits=False,show_operator=[G[0],G[20],G[13],G[32]])
-#     # for A in G:
-#     #     g.display(show_qubits=False,show_operator=A)
-
-# import cProfile
-# cProfile.run('main()')
-# main()

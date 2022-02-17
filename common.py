@@ -42,6 +42,8 @@ def typeName(val):
 ## make an integer numpy array
 ## if n is set, check that rows have length n
 def ZMat(A,n=None):
+    if typeName(A) in ['set','range']:
+        A = list(A)
     if typeName(A) != 'ndarray' or A.dtype != int:
         A = np.array(A,dtype=int)
     if n is not None:
@@ -81,6 +83,12 @@ def str2ZMat(mystr):
     if mystr.find(" ") > 0:
         mystr = mystr.split()
     return ZMat([int(s) for s in mystr])
+
+
+def str2ZMatdelim(S=''):
+    S = S.split(',')
+    # print(func_name(),S)
+    return ZMat([str2ZMat(s) for s in S])
 
 def int2ZMat(A,N=2,n=None):
     ## return an array representation of integer x
@@ -259,6 +267,18 @@ def set2Bin(n,t):
     temp = ZMatZeros(n)
     temp[list(t)] = 1
     return temp
+
+def bin2Set(v):
+    return [i for i in range(len(v)) if v[i] != 0]
+
+
+## for binary matrices of form IA return kernel 
+def kerIA(M,N=None):
+    r,n = np.shape(M)
+    At = np.transpose(M[:,r:])
+    if N is not None:
+        At = (N-1)*At
+    return np.hstack([At ,np.eye(n-r,dtype=int)]) 
 
 ## iterator - rows correspond to subsets of [0..n-1] of size between w1 and w2
 def BinPowerset(n,w1=None,w2=None):

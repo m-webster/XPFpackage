@@ -361,6 +361,7 @@ def GetUK(A,H,rowops,N):
      U = U[:k]
      return U,K
 
+
 ## returns Howell basis of A mod N plus row operations to convert to this form
 def How(A,N):
     #  B = np.copy(A)

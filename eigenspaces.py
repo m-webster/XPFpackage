@@ -40,7 +40,7 @@ def diagOpReport(N,n):
     data = []
     data.append(['Operator','degree','|Em|','|Eq|','|LXx|','E Class','Eq Class','LXx Class','Eq','LXx'])
     for A in diagOps(N,n):
-        Em = getEm(ZMat2D([A]),N)
+        Em = getEm(ZMat2D([A]),N,display=False)
         Eq,LXx  = cosetDecomposition(Em)
         if isZero(LXx):
             LXx = ZMat([])
@@ -71,4 +71,5 @@ def espaceDims(N,n):
     print(ZmatTable(np.array(data),rowdiv=1,coldiv=1))
 
 
-
+# N,n = 4,5
+# diagOpReport(N,n)
