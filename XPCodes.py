@@ -123,10 +123,10 @@ def simplifyXZ(SX,SZ,N):
     return SX
 
 ## vectorized version of Div
-# vDiv = np.vectorize(Div)
 def vDiv(A,b,N):
-    m,n = np.shape(A)
-    return ZMat([Div(a,b,N) for a in A],n)
+    s = np.shape(A)
+    fA = [Div(a,b,N) for a in np.ravel(A)]
+    return np.reshape(list(fA),s)
     
 ## return z and p components in single matrix
 ## if double then return 2z|p
