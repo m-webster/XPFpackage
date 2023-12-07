@@ -128,7 +128,7 @@ def Split(a,N,check=False):
     a = a % N
     if a == 0:
         return 1
-    r = np.int(np.ceil(np.log2(np.log2(N)))) if N > 1 else 1
+    r = int(np.ceil(np.log2(np.log2(N)))) if N > 1 else 1
 # print('N,r',N,r)
     for i in range(r):
         a = a*a % N
