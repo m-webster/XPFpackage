@@ -4,7 +4,7 @@ import sys
 
 from numpy.core.fromnumeric import repeat
 from common import *
-# from NSpace import *
+from NSpace import *
 
 ###############################################
 ##            XP Operator Algebra            ##
@@ -152,7 +152,7 @@ def p2strAlt(p):
     return  "" if p < 2 else f'^{{{p}}}'
 
 def phase2strAlt(p):
-    w = '' if p ==0 else '\omega' 
+    w = '' if p ==0 else '\\omega' 
     return  w if p < 2 else f'{w}^{{{p}}}'    
 
 vp2strAlt = np.vectorize(p2strAlt)
@@ -250,6 +250,7 @@ def XPMul(A,B,N,C=False):
 def XPPowerTest(A,N,d,C):
     return np.isclose(XP2Mat(C,N), np.linalg.matrix_power(XP2Mat(A,N),d)).all()
 
+## seems to be an error here - eg square of non-diagonal operators
 ## Raise XP operator A of precision N to power d
 def XPPower(A,N,d,C=False):
     if C is not False:
@@ -468,7 +469,10 @@ def XPMat(x,z,N):
 
 ## action of projector onto +1 Eigenspace of A on state S
 def XPProj(A,S,N,C=False):
-    # print(func_name(),'S',S)
+    # print(func_name(),'A')
+    # print(XP2Str(A,N))
+    # print('S')
+    # print(XP2Str(S,N))
     if np.ndim(S) == 1:
         S = ZMat([S])
     if C is not False:
@@ -497,8 +501,20 @@ def XPProj(A,S,N,C=False):
     A2 = XPSquare(A,N)
     # print(func_name(),'A2',XP2Str(A2,N))
     S1,c = XPProj(A2,S,N)
-    # print(func_name(),'S1',S1)
+    
+    # return to precision N
+    S1 = XPSetN(S1,2*N,N)
+    
+    # Sx = XPx(S1)
+    # H, rowops = How(Sx,2)
+    # print(func_name(),'S1')
+    # print(ZmatPrint(H))
+    # print('A',XP2Str(A,N))
     S2 = XPMul(A,S1,N)
+    # Sx = XPx(S2)
+    # H, rowops = How(Sx,2)
+    # print(func_name(),'S2')
+    # print(ZmatPrint(H))
     # print(func_name(),'A',A)
     # print(func_name(),'S2',S2)
     return StateAdd(S1,S2,N)
@@ -560,13 +576,15 @@ def PhaseAdd(p,q,N,C=False):
         p1,c = C
         z = Phase2C(p,N)+Phase2C(q,N)
         return np.isclose(z,Phase2C(p1,N,c=c))
+    P = 2 * N
     ## c is the coefficient cos(c pi/2N)
+    p, q = p % P,q % P
     c = np.abs(p - q)
-    d= np.mod(c,2*N)
+    d= np.mod(c,P)
     ## resulting phase
     p = p + q
     ## where d > N, we multiply both components by -1 = w^2N
-    Nadd = np.where(np.greater(d,N),2*N,0)
+    Nadd = np.where(np.greater(d,N),P,0)
     return np.mod(p+Nadd,4*N), np.mod(c+Nadd,4*N) 
 
 ## calculate (S1 + S2)/2
@@ -577,6 +595,63 @@ def StateAdd(S1,S2,N,C=False):
         # print('S3',State2C(S3,2*N,c))
         return np.isclose((State2C(S1,N)+State2C(S2,N))/2,State2C(S3,2*N,c)).all()
     S1,S2 = ZMat2D(S1), ZMat2D(S2)
+    # print(func_name(),'len(S1)',len(S1))
+    # print(func_name(),'len(S2)',len(S2))
+    n = XPn(np.vstack([S1,S2]))
+    # print(func_name(),f'n={n}')
+    ## make state dictionaries
+    p,x,z = XPcomponents(S1)
+    p = np.mod(p,2*N)
+    D1 = {tuple(x[i]): p[i] for i in range(len(x))}
+    p,x,z = XPcomponents(S2)
+    p = np.mod(p,2*N)
+    D2 = {tuple(x[i]): p[i] for i in range(len(x))}
+    pList = []
+    eList = []
+    cList = []
+    DS1 = set(D1.keys())
+    DS2 = set(D2.keys())
+    B = DS1.intersection(DS2)
+    o1 = DS1 - DS2
+    for e in DS1.union(DS2):
+        c = -1
+        if e in B:
+            p,c = PhaseAdd(D1[e],D2[e],N)   
+            # print(func_name(),D1[e],D2[e],p,c,N)
+        elif e in o1:
+            p = D1[e] * 2
+        else:
+            p = D2[e] * 2
+        # if p != N:
+        # if c % N > 0:
+        if c % (2*N) != N:
+            pList.append(p)
+            eList.append(e)
+            cList.append(c)
+    eList = ZMat(eList,n)
+    pList = ZMat([pList])
+    ## merge components back into state format
+    S = makeXP(pList.T, eList, ZMatZeros(eList.shape))
+    # print(f'N={N}')
+    # print(func_name(),'S1')
+    # print(ZmatPrint(S1))
+    # print(func_name(),'S2')
+    # print(ZmatPrint(S2))
+    # print(func_name(),'S')
+    # print(ZmatPrint(S))
+    # print(func_name(),'len(S)',len(S))
+    return S,cList
+
+## calculate (S1 + S2)/2
+def StateAddOld(S1,S2,N,C=False):
+    if C is not False:
+        S3,c = C
+        # print('S1+S2',(State2C(S1,N)+State2C(S2,N)))
+        # print('S3',State2C(S3,2*N,c))
+        return np.isclose((State2C(S1,N)+State2C(S2,N))/2,State2C(S3,2*N,c)).all()
+    S1,S2 = ZMat2D(S1), ZMat2D(S2)
+    n = XPn(np.vstack([S1,S2]))
+    print(func_name(),f'n={n}')
     ## check if we have empty states
     S = None
     if len(S1) == 0:
@@ -593,6 +668,7 @@ def StateAdd(S1,S2,N,C=False):
     SD1,SD2 = set(D1.keys()),set(D2.keys())
     ## A - where x is in both S1 and S2
     A = ZMat([[D1[x],D2[x],x] for x in SD1.intersection(SD2)],3)
+    print(func_name(),'len(A)',len(A))
     ## Add the phases in A to find p, c
     p,c = PhaseAdd(A[:,0],A[:,1],N)
     x = A[:,2]
@@ -606,12 +682,11 @@ def StateAdd(S1,S2,N,C=False):
     mydata = mydata[ix,:]
     p,c,x = [ZMat(mydata[:,i]) for i in range(3)]
     ## convert x from int to array of 0/1
-    x = int2ZMat(x,2,n=XPn(S1))
+    x = int2ZMat(x,2,n=n)
     ## merge components back into state format
     z = ZMatZeros(np.shape(x))
     S = XPmergeComponents([p,x,z])
     return S,c
-     
 
 ## convert a state into a  complex vector
 ## convert the state to a tuple representing the state in Cartesian coordinates

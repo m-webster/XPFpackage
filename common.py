@@ -11,6 +11,66 @@ np.set_printoptions(precision=3,suppress=True)
 #     # http://stackoverflow.com/questions/3071415/efficient-method-to-calculate-the-rank-vector-of-a-list-in-python
 #     return sorted(range(len(seq)), key=seq.__getitem__)
 
+from collections.abc import Mapping, Container
+from sys import getsizeof
+
+def isIter(A):
+    return hasattr(A,'__iter__')
+
+def Lolshape(CC):
+    if len(CC) == 0 or not isIter(CC[0]):
+        return [len(CC)]
+    else:
+        return [len(CC)] + Lolshape(CC[0])
+
+def SL2ZM(CC,ix,A):
+    '''recursive step for Sets2ZMat'''
+    if len(CC) == 0 or not isIter(CC[0]):
+        for i in CC:
+            ix2 = (ix + [i])
+            A[*ix2] = 1
+    else:
+        i = 0
+        for c in CC:
+            ix2 = ix + [i]
+            SL2ZM(c,ix2,A)
+            i+=1
+
+def Sets2ZMat(n,CC):
+    '''Convert a list of lists or sets to a binary matrix with rows of length n
+    Fast method - matrix storage is allocated at beginning'''
+    ## get shape of final matrix
+    s = Lolshape(CC)
+    s[-1] = n
+    ## intialise to all zeros
+    A = np.zeros(s,dtype=np.int8)
+    ## recursion
+    SL2ZM(CC,[],A)
+    return A
+
+def deep_getsizeof(o, ids=None):
+    if ids is None:
+        ids = set()
+    d = deep_getsizeof
+    if id(o) in ids:
+        return 0
+ 
+    r = getsizeof(o)
+    ids.add(id(o))
+ 
+    if isinstance(o, str) or isinstance(0, str):
+        return r
+    
+    if isinstance(o, dict):
+        return r + sum(d(k, ids) + d(v, ids) for k, v in o.items())
+ 
+    if isinstance(o, Mapping):
+        return r + sum(d(k, ids) + d(v, ids) for k, v in o.iteritems())
+ 
+    if isinstance(o, Container):
+        return r + sum(d(x, ids) for x in o)
+ 
+    return r 
 
 def currTime():
     return time.process_time()
@@ -82,13 +142,26 @@ def ZMat1D(A,n):
 def str2ZMat(mystr):
     if mystr.find(" ") > 0:
         mystr = mystr.split()
-    return ZMat([int(s) for s in mystr])
+    myArr = [int(s) for s in mystr]
+    # print(func_name(),len(myArr))
+    return ZMat(myArr)
 
+
+# def str2ZMatdelim(S=''):
+#     S = S.split(',')
+#     # print(func_name(),S)
+#     return ZMat([str2ZMat(s) for s in S])
 
 def str2ZMatdelim(S=''):
+    S = S.replace("\n", ",")
+    S = S.replace("\r", ",")
+    S = S.replace(",,", ",")
     S = S.split(',')
-    # print(func_name(),S)
+    # print(func_name(),len(S),'rows')
     return ZMat([str2ZMat(s) for s in S])
+
+
+
 
 def int2ZMat(A,N=2,n=None):
     ## return an array representation of integer x
@@ -103,6 +176,22 @@ def int2ZMat(A,N=2,n=None):
     B = np.repeat(B,n,axis=d)
     Ni = N ** np.arange(n-1,-1,-1)
     return np.apply_along_axis(func1d=modDiv,axis=d,arr=B,b=Ni,N=N)
+
+#######################################
+## ZMat Analysis
+#######################################
+
+def freqTable(wList):
+    '''Dict of val:count for val in wList'''
+    temp = {w:0 for w in set(wList)}
+    for w in wList:
+        temp[w] += 1
+    return temp
+
+def freqTablePrint(wList):
+    FT = freqTable(wList)
+    temp = [f'{k}:{FT[k]}' for k in sorted(FT.keys())]
+    return ",".join(temp)
 
 def modDiv(a,b,N):
     return np.mod(a//b,N)
@@ -165,7 +254,7 @@ def sepjoin(a,sep):
     return sep.join(a)
 
 def ZmatPrint(A,N=None):
-    return "\n".join(ZMat2str(A,N))
+    return "\n".join(ZMat2str(ZMat2D(A),N))
 
 def isiter(vals):
     # can we turn vals into an array?
@@ -192,6 +281,19 @@ def argsort(seq,reverse=False):
     # http://stackoverflow.com/questions/3071415/efficient-method-to-calculate-the-rank-vector-of-a-list-in-python
     return sorted(range(len(seq)), key=seq.__getitem__,reverse=reverse)
 
+def argmin(seq,reverse=False):
+    return max(range(len(seq)), key=seq.__getitem__) if reverse else min(range(len(seq)), key=seq.__getitem__) 
+
+
+def ixRev(ix):
+    ## return indices to restore original column order
+    ## input: ix - permutation of [0..n-1]
+    ## output: ixR such that ix[ixR] = [0..n-1]
+    ixR = [0] * len(ix)
+    for i in range(len(ix)):
+        ixR[ix[i]] = i 
+    return ixR
+
 ## optimize
 def weight(A):
     return sum([1 if a > 0 else 0 for a in A])
@@ -215,6 +317,12 @@ def RemoveZeroRows(A,N=False):
     A = ZMat2D(A)
     ix = np.logical_not([isZero(a,N) for a in A])
     return A[ix]
+
+def RemoveZeroCols(A,N=False):
+    A = ZMat2D(A)
+    m,n = np.shape(A)
+    ix = np.logical_not([isZero(A[:,i],N) for i in range(n)])
+    return A[:,ix]
 
 def isConstant(A):
     return np.amax(A) == np.amin(A)
@@ -272,13 +380,71 @@ def bin2Set(v):
     return [i for i in range(len(v)) if v[i] != 0]
 
 
+def leadingIndices(K):
+    n = len(K)
+    if n == 0:
+        return []
+    L = [len(K[0])] * (n)
+    m = len(K[0])
+    i = 0
+    j = 0
+    while i < m and j < n:
+        if K[j][i] == 0:
+            i += 1
+        else:
+            L[j] = i
+            j+=1
+            # i+=1
+    return L
+
 ## for binary matrices of form IA return kernel 
-def kerIA(M,N=None):
+## Not sure if it works perfectly for N>2
+def kerIA(M,N=None,C=None):
+    # print(func_name(),'M')
+    # print(ZmatPrint(M))
+    if N is None:
+        N =2
+    if C is not None:
+        Z = matMul(C,np.transpose(M),N)
+        return np.all(Z==0)
     r,n = np.shape(M)
-    At = np.transpose(M[:,r:])
-    if N is not None:
-        At = (N-1)*At
-    return np.hstack([At ,np.eye(n-r,dtype=int)]) 
+    if (r == n):
+        return ZMatZeros((0,n))
+    L = leadingIndices(M)
+    nL = [i for i in range(n) if i not in set(L)]
+    MnL = (N-1)*M[:,nL]
+    Inr = np.diag([1]*(n-r))
+    temp = [[] for i in range(n)]
+    for i in range(r):
+        temp[L[i]] = MnL[i]
+    for i in range(n-r):
+        temp[nL[i]] = Inr[i]
+    return np.transpose(temp)
+
+    r,n = np.shape(M)
+    temp = []
+    for r in M:
+        s = bin2Set(r)
+        l = s.pop()
+        for j in s:
+            rj = set2Bin(n,[j])
+            rj[l] = N-1
+            temp.append(rj)
+    ## columns where there are no entries
+    s = np.sum(M,axis=0)
+    s = [i for i in range(len(s)) if s[i]==0]
+    for j in s:
+        temp.append(set2Bin(n,[j]))
+    return ZMat(temp)
+
+
+
+    
+
+    # At = np.transpose(M[:,r:])
+    # if N is not None:
+    #     At = (N-1)*At
+    # return np.hstack([At ,np.eye(n-r,dtype=int)]) 
 
 ## iterator - rows correspond to subsets of [0..n-1] of size between w1 and w2
 def BinPowerset(n,w1=None,w2=None):

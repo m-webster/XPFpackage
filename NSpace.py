@@ -134,27 +134,27 @@ def Split(a,N,check=False):
         a = a*a % N
     return N // np.gcd(a,N)
 
-# def Factorize(a):
-#     f = []
-#     m = []
-#     for x in range(2,np.int(np.ceil(a ** 0.5)+1)):
-#         if a % x == 0:
-#             i = 0
-#             f.append(x)
-#             while a % x == 0:
-#                 i += 1
-#                 a = a // x
-#             m.append(i)
-#     return f,m
+def Factorize(a):
+    f = []
+    m = []
+    for x in range(2,np.int(np.ceil(a ** 0.5)+1)):
+        if a % x == 0:
+            i = 0
+            f.append(x)
+            while a % x == 0:
+                i += 1
+                a = a // x
+            m.append(i)
+    return f,m
 
-# def Factors(a):
-#     f = set()
-#     for x in range(2,np.int(np.ceil(a ** 0.5)+1)):
-#         if a % x == 0:
-#             f.add(x)
-#             f.add(a //x)
-#     f.add(a)
-#     return sorted(f)
+def Factors(a):
+    f = set()
+    for x in range(2,np.int(np.ceil(a ** 0.5)+1)):
+        if a % x == 0:
+            f.add(x)
+            f.add(a //x)
+    f.add(a)
+    return sorted(f)
 
 ## generate list of prime numbers <= a
 ## used for checking Split function
@@ -274,6 +274,8 @@ def TestRingOps(N=False):
 
 ## perform row operation specified by opData on matrix A
 def doOperation(A,opData,N=1):
+    # print(func_name(),opData)
+    # print(ZmatPrint(ZMat(A)))
     op, data = opData
 
     ## swap rows A[j], A[m]
@@ -361,16 +363,27 @@ def GetUK(A,H,rowops,N):
      U = U[:k]
      return U,K
 
+def getKer(A,N):
+    startTimer()
+    A = ZMat(A)
+    H, rowops = How(A.T,N)
+    U,K = GetUK(A.T,H,rowops,N)
+    K,rowops = How(K,N)
+    # print(func_name(),elapsedTime(),deep_getsizeof(K))
+    return K
+    # At = np.transpose(A)
+    # nsp = NSpace(At,N)
+    # return nsp.getVal('Kt')
 
 ## returns Howell basis of A mod N plus row operations to convert to this form
 def How(A,N):
+     rowops = []
+     if len(A) == 0:
+         return A, rowops
     #  B = np.copy(A)
      B = [a for a in A]
      m,n = np.shape(A)
     #  print(func_name(),'m,n',m,n)
-     rowops = []
-     if m == 0:
-         return A, rowops
      r = 0
      ## c is the column of B we are currently looking at
      for c in range(n):
@@ -399,6 +412,8 @@ def How(A,N):
                for j in range(r):
                     if B[j][c] >= b:
                          x = Quo(B[j][c],b,N)
+                         if x is None:
+                             print('Quo(B[j][c],b,N)',B[j][c],b,N,x)
                          rowops.append(('a',(r,j,-x)))
                          B = doOperation(B,rowops[-1],N)                
                ## Multiplying by x = Ann(b) eliminates b = B[r][c], but rest of the row may be non-zero
@@ -560,10 +575,10 @@ def lowWeightGenerators(A,N=2,n=None,check=False):
 ####          Intersection of Spans           ####
 ##################################################
 
-## Calculate intersection of two affine spaces
-## U1 = o1 + <A1> mod N
-## U2 = o2 + <A2> mod N
 def affineIntersection(A1,o1,A2,o2,N,C=False):
+    '''Calculate intersection of two affine spaces
+    U1 = o1 + <A1> mod N
+    U2 = o2 + <A2> mod N'''
     if C is not False:
         A,o = C
         tocheck = np.mod(o + A,N)
@@ -580,38 +595,45 @@ def affineIntersection(A1,o1,A2,o2,N,C=False):
                 print(v2, 'Not in span of A2')
                 return False
         return True
-
-    nsp = NSpace(np.vstack([A1,A2]),N)
-    # nsp.simplifyH()
-    v = np.mod(o1-o2,N)
-    b,u = matResidual(nsp.H,v,N)
-    if not isZero(b):
-        ## there is no solution o1-o2 = - v1@A1 + v2@A2 <=> o1 + v1@A1 = o2 + v2@A2
-        return False
-    ## residue of o1-o2 wrt A1 = v2@A2
-    b,u = matResidual(A1,v,N)
-    ## new offset is o2 + v2@A2
-    o = np.mod(b + o2,N)
+    o = affineIntercept(A1,o1,A2,o2,N)
     ## new affine space is intersection
     A = nsIntersection([A1,A2],N)
+    ## residue mod A to simplify result
+    o, u = matResidual(A, o, N)
     return A,o
 
-## Calculate intersection of two affine spaces
-## U1 = o1 + <A1> mod N
-## U2 = o2 + <A2> mod N
-## return o which is in both U1 and U2 or False
+def prepHowRes(A,z):
+    '''Convert A into form 1|0//0|A for use in HowRes function.'''
+    B = np.vstack([z,A])
+    B = np.hstack([ZMatZeros((len(B),1)),B])
+    B[0,0] = 1 
+    return B
+
 def affineIntercept(A1,o1,A2,o2,N,C=False):
-    nsp = NSpace(np.vstack([A1,A2]),N)
+    '''Calculate intersection of two affine spaces
+    U1 = o1 + <A1> mod N
+    U2 = o2 + <A2> mod N
+    return o which is in both U1 and U2 or False'''
     v = np.mod(o1-o2,N)
-    b,u = matResidual(nsp.H,v,N)
-    if not isZero(b):
+    ## make matrix of form (1 v\\0 A1\\0 A2)
+    A = prepHowRes(np.vstack([A1, A2]), v)
+    ## Howell form
+    H, rowops = How(A, N)
+    ## Check if first row is zero, apart from first entry
+    if not isZero(H[0,1:]):
         ## there is no solution o1-o2 = - v1@A1 + v2@A2 <=> o1 + v1@A1 = o2 + v2@A2
         return False
-    ## residue of o1-o2 wrt A1 = v2@A2
-    b,u = matResidual(A1,v,N)
-    ## new offset is o2 + v2@A2
-    o = np.mod(b + o2,N)
-    return o
+
+    ## get transformation matrices for H
+    U, K = GetUK(A, H, rowops, N)
+    ## get first row of U - 
+    u = U[0]
+    ## exclude row corresponding to v and rows of A1
+    u[:len(A1)+1] = 0
+    ## b = u @ A is in <A2> - take first row and remove col 1
+    b = matMul(u, A,N)[0,1:]
+    ## reverse sign
+    return np.mod(o2-b,N)
 
 ## intersection of multiple N spaces
 def nsIntersection(Alist,N):
